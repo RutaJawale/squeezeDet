@@ -32,9 +32,9 @@ tf.app.flags.DEFINE_string('image_set', 'test',
 tf.app.flags.DEFINE_string('year', '2007',
                             """VOC challenge year. 2007 or 2012"""
                             """Only used for VOC data""")
-tf.app.flags.DEFINE_string('eval_dir', '/tmp/bichen/logs/squeezeDet/eval',
+tf.app.flags.DEFINE_string('eval_dir', '/rscratch/ruta/logs/squeezeDet/6.22/eval',
                             """Directory where to write event logs """)
-tf.app.flags.DEFINE_string('checkpoint_path', '/tmp/bichen/logs/squeezeDet/train',
+tf.app.flags.DEFINE_string('checkpoint_path', '/rscratch/ruta/logs/squeezeDet/6.22/train',
                             """Path to the training checkpoint.""")
 tf.app.flags.DEFINE_integer('eval_interval_secs', 60 * 1,
                              """How often to check if new cpt is saved.""")

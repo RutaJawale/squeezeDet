@@ -32,7 +32,7 @@ tf.app.flags.DEFINE_string('image_set', 'train',
 tf.app.flags.DEFINE_string('year', '2007',
                             """VOC challenge year. 2007 or 2012"""
                             """Only used for Pascal VOC dataset""")
-tf.app.flags.DEFINE_string('train_dir', '/tmp/bichen/logs/squeezeDet/train',
+tf.app.flags.DEFINE_string('train_dir', '/rscratch/ruta/logs/squeezeDet/6.22/train',
                             """Directory where to write event logs """
                             """and checkpoint.""")
 tf.app.flags.DEFINE_integer('max_steps', 1000000,

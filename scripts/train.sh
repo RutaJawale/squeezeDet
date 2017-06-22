@@ -2,7 +2,7 @@
 
 export GPUID=0
 export NET="squeezeDet"
-export TRAIN_DIR="/tmp/bichen/logs/SqueezeDet/"
+export TRAIN_DIR="/rscratch/ruta/logs/squeezeDet/6.22/"
 
 if [ $# -eq 0 ]
 then
