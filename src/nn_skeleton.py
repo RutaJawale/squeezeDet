@@ -72,6 +72,9 @@ def _variable_with_weight_decay(name, shape, wd, initializer, trainable=True):
 class ModelSkeleton:
   """Base class of NN detection models."""
   def __init__(self, mc):
+    self.kernel_t = 0.5
+    self.bias_t = 0.5
+
     self.mc = mc
     # a scalar tensor in range (0, 1]. Usually set to 0.5 in training phase and
     # 1.0 in evaluation phase
@@ -133,6 +136,19 @@ class ModelSkeleton:
     # activation counter
     self.activation_counter = [] # array of tuple of layer name, output activations
     self.activation_counter.append(('input', mc.IMAGE_WIDTH*mc.IMAGE_HEIGHT*3))
+
+  def _quantize(self, tensor, t, Wp, Wn, level):
+    tensor_min = tf.reduce_min(tensor)
+    tensor_max = tf.reduce_max(tensor)
+    tensor_normalized = -1 + ((tensor - tensor_min)*(-1 - (-1))) / (tensor_max - tensor_min)
+    mask_tozero = tf.logical_and(tf.greater_equal(tensor_normalized, -t), tf.less_equal(tensor_normalized, t))
+    zeros = tf. zeros_like(tensor_normalized)
+    temp1 = tf.where(mask_tozero, tensor_normalized, zeros)
+    ones = zeros + 1
+    temp2 = tf.where(tf.greater(temp1, 0), temp1, ones*Wp[level])
+    neg_ones = -ones
+    tensor_quantized = tf.where(tf.less(temp2, 0), temp2, neg_ones*Wn[level])
+    return tensor_quantized
 
 
   def _add_forward_graph(self):
@@ -470,7 +486,7 @@ class ModelSkeleton:
 
   def _conv_layer(
       self, layer_name, inputs, filters, size, stride, padding='SAME',
-      freeze=False, xavier=False, relu=True, stddev=0.001):
+      freeze=False, xavier=False, relu=True, stddev=0.001, level=0):
     """Convolutional layer operation constructor.
 
     Args:
@@ -534,12 +550,21 @@ class ModelSkeleton:
 
       biases = _variable_on_device('biases', [filters], bias_init, 
                                 trainable=(not freeze))
-      self.model_params += [kernel, biases]
+      #self.model_params += [kernel, biases]
 
+      kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level)
+      biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level)
+      self.model_params += [kernel_quantized, biases_quantized]
       conv = tf.nn.conv2d(
+          inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
+          name='convolution')
+      conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
+
+
+      #conv = tf.nn.conv2d(
           inputs, kernel, [1, stride, stride, 1], padding=padding,
           name='convolution')
-      conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
+      #conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
   
       if relu:
         out = tf.nn.relu(conv_bias, 'relu')

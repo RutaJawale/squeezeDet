@@ -19,6 +19,11 @@ from nn_skeleton import ModelSkeleton
 class SqueezeDet(ModelSkeleton):
   def __init__(self, mc, gpu_id=0):
     with tf.device('/gpu:{}'.format(gpu_id)):
+      self.kernel_Wn = np.ones(12)
+      self.kernel_Wp = np.ones(12)
+      self.bias_Wn = np.ones(12)
+      self.bias_Wp = np.ones(12)
+
       ModelSkeleton.__init__(self, mc)
 
       self._add_forward_graph()
@@ -39,38 +44,38 @@ class SqueezeDet(ModelSkeleton):
 
     conv1 = self._conv_layer(
         'conv1', self.image_input, filters=64, size=3, stride=2,
-        padding='SAME', freeze=True)
+        padding='SAME', freeze=True, level=0)
     pool1 = self._pooling_layer(
         'pool1', conv1, size=3, stride=2, padding='SAME')
 
     fire2 = self._fire_layer(
-        'fire2', pool1, s1x1=16, e1x1=64, e3x3=64, freeze=False)
+        'fire2', pool1, s1x1=16, e1x1=64, e3x3=64, freeze=False, level=1)
     fire3 = self._fire_layer(
-        'fire3', fire2, s1x1=16, e1x1=64, e3x3=64, freeze=False)
+        'fire3', fire2, s1x1=16, e1x1=64, e3x3=64, freeze=False, level=2)
     pool3 = self._pooling_layer(
         'pool3', fire3, size=3, stride=2, padding='SAME')
 
     fire4 = self._fire_layer(
-        'fire4', pool3, s1x1=32, e1x1=128, e3x3=128, freeze=False)
+        'fire4', pool3, s1x1=32, e1x1=128, e3x3=128, freeze=False, level=3)
     fire5 = self._fire_layer(
-        'fire5', fire4, s1x1=32, e1x1=128, e3x3=128, freeze=False)
+        'fire5', fire4, s1x1=32, e1x1=128, e3x3=128, freeze=False, level=4)
     pool5 = self._pooling_layer(
         'pool5', fire5, size=3, stride=2, padding='SAME')
 
     fire6 = self._fire_layer(
-        'fire6', pool5, s1x1=48, e1x1=192, e3x3=192, freeze=False)
+        'fire6', pool5, s1x1=48, e1x1=192, e3x3=192, freeze=False, level=5)
     fire7 = self._fire_layer(
-        'fire7', fire6, s1x1=48, e1x1=192, e3x3=192, freeze=False)
+        'fire7', fire6, s1x1=48, e1x1=192, e3x3=192, freeze=False, level=6)
     fire8 = self._fire_layer(
-        'fire8', fire7, s1x1=64, e1x1=256, e3x3=256, freeze=False)
+        'fire8', fire7, s1x1=64, e1x1=256, e3x3=256, freeze=False, level=7)
     fire9 = self._fire_layer(
-        'fire9', fire8, s1x1=64, e1x1=256, e3x3=256, freeze=False)
+        'fire9', fire8, s1x1=64, e1x1=256, e3x3=256, freeze=False, level=8)
 
     # Two extra fire modules that are not trained before
     fire10 = self._fire_layer(
-        'fire10', fire9, s1x1=96, e1x1=384, e3x3=384, freeze=False)
+        'fire10', fire9, s1x1=96, e1x1=384, e3x3=384, freeze=False, level=9)
     fire11 = self._fire_layer(
-        'fire11', fire10, s1x1=96, e1x1=384, e3x3=384, freeze=False)
+        'fire11', fire10, s1x1=96, e1x1=384, e3x3=384, freeze=False, level=10)
     dropout11 = tf.nn.dropout(fire11, self.keep_prob, name='drop11')
 
     num_output = mc.ANCHOR_PER_GRID * (mc.CLASSES + 1 + 4)
@@ -79,7 +84,7 @@ class SqueezeDet(ModelSkeleton):
         padding='SAME', xavier=False, relu=False, stddev=0.0001)
 
   def _fire_layer(self, layer_name, inputs, s1x1, e1x1, e3x3, stddev=0.01,
-      freeze=False):
+      freeze=False, level=0):
     """Fire layer constructor.
 
     Args:
@@ -95,12 +100,12 @@ class SqueezeDet(ModelSkeleton):
 
     sq1x1 = self._conv_layer(
         layer_name+'/squeeze1x1', inputs, filters=s1x1, size=1, stride=1,
-        padding='SAME', stddev=stddev, freeze=freeze)
+        padding='SAME', stddev=stddev, freeze=freeze, level=level)
     ex1x1 = self._conv_layer(
         layer_name+'/expand1x1', sq1x1, filters=e1x1, size=1, stride=1,
-        padding='SAME', stddev=stddev, freeze=freeze)
+        padding='SAME', stddev=stddev, freeze=freeze, level=level)
     ex3x3 = self._conv_layer(
         layer_name+'/expand3x3', sq1x1, filters=e3x3, size=3, stride=1,
-        padding='SAME', stddev=stddev, freeze=freeze)
+        padding='SAME', stddev=stddev, freeze=freeze, level=level)
 
     return tf.concat([ex1x1, ex3x3], 3, name=layer_name+'/concat')
