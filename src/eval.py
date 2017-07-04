@@ -48,7 +48,6 @@ tf.app.flags.DEFINE_string('gpu', '0', """gpu id.""")
 def eval_once(
     saver, ckpt_path, summary_writer, eval_summary_ops, eval_summary_phs, imdb,
     model):
-
   with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
 
     # Restores from checkpoint

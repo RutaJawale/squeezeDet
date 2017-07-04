@@ -1,4 +1,4 @@
-#!/bin/bash
+"""#!/bin/bash"""
 
 export GPUID=0
 export NET="squeezeDet"

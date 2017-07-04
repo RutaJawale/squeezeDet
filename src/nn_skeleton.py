@@ -72,8 +72,8 @@ def _variable_with_weight_decay(name, shape, wd, initializer, trainable=True):
 class ModelSkeleton:
   """Base class of NN detection models."""
   def __init__(self, mc):
-    self.kernel_t = 0.5
-    self.bias_t = 0.5
+    self.kernel_t = 0.05
+    self.bias_t = 0.05
 
     self.mc = mc
     # a scalar tensor in range (0, 1]. Usually set to 0.5 in training phase and
@@ -142,11 +142,19 @@ class ModelSkeleton:
     tensor_max = tf.reduce_max(tensor)
     tensor_normalized = -1 + ((tensor - tensor_min)*(-1 - (-1))) / (tensor_max - tensor_min)
     mask_tozero = tf.logical_and(tf.greater_equal(tensor_normalized, -t), tf.less_equal(tensor_normalized, t))
-    zeros = tf. zeros_like(tensor_normalized)
+    zeros = tf.zeros_like(tensor_normalized)
     temp1 = tf.where(mask_tozero, tensor_normalized, zeros)
     ones = zeros + 1
     temp2 = tf.where(tf.greater(temp1, 0), temp1, ones*Wp[level])
     neg_ones = -ones
+
+  
+    sess = tf.get_default_session()
+    toprint = sess.run([neg_ones])
+    for k in toprint:
+      print(k)
+
+
     tensor_quantized = tf.where(tf.less(temp2, 0), temp2, neg_ones*Wn[level])
     return tensor_quantized
 
@@ -359,7 +367,7 @@ class ModelSkeleton:
 
     opt = tf.train.MomentumOptimizer(learning_rate=lr, momentum=mc.MOMENTUM)
     grads_vars = opt.compute_gradients(self.loss, tf.trainable_variables())
-
+ 
     with tf.variable_scope('clip_gradient') as scope:
       for i, (grad, var) in enumerate(grads_vars):
         grads_vars[i] = (tf.clip_by_norm(grad, mc.MAX_GRAD_NORM), var)
@@ -392,6 +400,11 @@ class ModelSkeleton:
       size, stride, padding='SAME', freeze=False, relu=True,
       conv_with_bias=False, stddev=0.001):
     """ Convolution + BatchNorm + [relu] layer. Batch mean and var are treated
+    as constant. Weights have to be initialized from a pre-trained model or
+    restored from a checkpoint.
+
+    Args:
+     Convolution + BatchNorm + [relu] layer. Batch mean and var are treated
     as constant. Weights have to be initialized from a pre-trained model or
     restored from a checkpoint.
 
@@ -550,20 +563,28 @@ class ModelSkeleton:
 
       biases = _variable_on_device('biases', [filters], bias_init, 
                                 trainable=(not freeze))
-      #self.model_params += [kernel, biases]
+      self.model_params += [kernel, biases]
 
       kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level)
       biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level)
-      self.model_params += [kernel_quantized, biases_quantized]
+      #self.model_params += [kernel_quantized, biases_quantized]
       conv = tf.nn.conv2d(
           inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
           name='convolution')
       conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
 
+     
+      variables_names = [v.name for v in tf.trainable_variables()]
+      values = sess.run(variables_names)
+      for k, v in zip(variables_names, values):
+        print("Variable: ", k)
+        print("Shape: ", v.shape)
+        print(v)
+
 
       #conv = tf.nn.conv2d(
-          inputs, kernel, [1, stride, stride, 1], padding=padding,
-          name='convolution')
+      #    inputs, kernel, [1, stride, stride, 1], padding=padding,
+      #    name='convolution')
       #conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
   
       if relu:
