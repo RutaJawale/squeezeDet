@@ -52,6 +52,7 @@ def eval_once(
 
     # Restores from checkpoint
     saver.restore(sess, ckpt_path)
+    # TODO(ruta): do the printing here
     # Assuming model_checkpoint_path looks something like:
     #   /ckpt_dir/model.ckpt-0,
     # extract global_step from it.
@@ -164,6 +165,9 @@ def evaluate():
       mc.BATCH_SIZE = 1 # TODO(bichen): allow batch size > 1
       mc.LOAD_PRETRAINED_MODEL = False
       model = SqueezeDetPlus(mc)
+
+    #DOTO(ruta): fix thjis
+    # mqp in model.model_quantized_params:
 
     imdb = kitti(FLAGS.image_set, FLAGS.data_path, mc)
 

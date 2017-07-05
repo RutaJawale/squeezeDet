@@ -128,6 +128,7 @@ class ModelSkeleton:
 
     # model parameters
     self.model_params = []
+    self.model_params_quantized = []
 
     # model size counter
     self.model_size_counter = [] # array of tuple of layer name, parameter size
@@ -140,6 +141,11 @@ class ModelSkeleton:
   def _quantize(self, tensor, t, Wp, Wn, level):
     tensor_min = tf.reduce_min(tensor)
     tensor_max = tf.reduce_max(tensor)
+   
+    # temporary 
+    Wn[level] = np.abs(tensor_min)
+    Wp[level] = np.abs(tensor_max)
+
     tensor_normalized = -1 + ((tensor - tensor_min)*(-1 - (-1))) / (tensor_max - tensor_min)
     mask_tozero = tf.logical_and(tf.greater_equal(tensor_normalized, -t), tf.less_equal(tensor_normalized, t))
     zeros = tf.zeros_like(tensor_normalized)
@@ -147,14 +153,6 @@ class ModelSkeleton:
     ones = zeros + 1
     temp2 = tf.where(tf.greater(temp1, 0), temp1, ones*Wp[level])
     neg_ones = -ones
-
-  
-    sess = tf.get_default_session()
-    toprint = sess.run([neg_ones])
-    for k in toprint:
-      print(k)
-
-
     tensor_quantized = tf.where(tf.less(temp2, 0), temp2, neg_ones*Wn[level])
     return tensor_quantized
 
@@ -214,6 +212,14 @@ class ModelSkeleton:
         anchor_h = mc.ANCHOR_BOX[:, 3]
 
         box_center_x = tf.identity(
+            anchor_x + delta_x * anchor_w, name='bbox_cx')
+        box_center_y = tf.identity(
+            anchor_y + delta_y * anchor_h, name='bbox_cy')
+        box_width = tf.identity(
+            anchor_x + delta_x * anchor_w, name='bbox_cx')
+        box_center_y = tf.identity(
+            anchor_y + delta_y * anchor_h, name='bbox_cy')
+        box_width = tf.identity(
             anchor_x + delta_x * anchor_w, name='bbox_cx')
         box_center_y = tf.identity(
             anchor_y + delta_y * anchor_h, name='bbox_cy')
@@ -567,20 +573,11 @@ class ModelSkeleton:
 
       kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level)
       biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level)
-      #self.model_params += [kernel_quantized, biases_quantized]
+      self.model_params_quantized += [kernel_quantized, biases_quantized]
       conv = tf.nn.conv2d(
           inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
           name='convolution')
       conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
-
-     
-      variables_names = [v.name for v in tf.trainable_variables()]
-      values = sess.run(variables_names)
-      for k, v in zip(variables_names, values):
-        print("Variable: ", k)
-        print("Shape: ", v.shape)
-        print(v)
-
 
       #conv = tf.nn.conv2d(
       #    inputs, kernel, [1, stride, stride, 1], padding=padding,
@@ -791,11 +788,3 @@ class ModelSkeleton:
     with tf.variable_scope('activation_summary') as scope:
       tf.summary.histogram(
           'activation_summary/'+layer_name, x)
-      tf.summary.scalar(
-          'activation_summary/'+layer_name+'/sparsity', tf.nn.zero_fraction(x))
-      tf.summary.scalar(
-          'activation_summary/'+layer_name+'/average', tf.reduce_mean(x))
-      tf.summary.scalar(
-          'activation_summary/'+layer_name+'/max', tf.reduce_max(x))
-      tf.summary.scalar(
-          'activation_summary/'+layer_name+'/min', tf.reduce_min(x))

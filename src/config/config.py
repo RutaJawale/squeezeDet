@@ -131,7 +131,7 @@ def base_model_config(dataset='PASCAL_VOC'):
   cfg.BATCH_NORM_EPSILON = 1e-5
 
   # number of threads to fetch data
-  cfg.NUM_THREAD = 4
+  cfg.NUM_THREAD = -1
 
   # capacity for FIFOQueue
   cfg.QUEUE_CAPACITY = 100
