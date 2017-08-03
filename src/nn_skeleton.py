@@ -72,7 +72,7 @@ def _variable_with_weight_decay(name, shape, wd, initializer, trainable=True):
 class ModelSkeleton:
   """Base class of NN detection models."""
   def __init__(self, mc):
-    self.kernel_t = 0.05
+    self.kernel_t = 0.1
     self.bias_t = 0.05
 
     self.mc = mc
@@ -137,24 +137,59 @@ class ModelSkeleton:
     # activation counter
     self.activation_counter = [] # array of tuple of layer name, output activations
     self.activation_counter.append(('input', mc.IMAGE_WIDTH*mc.IMAGE_HEIGHT*3))
+    
+    # temporary for printing
+    self.tensor = 0
+    self.tensor_min = []
+    self.tensor_max = []
+    self.tensor_normalized = []
+    self.tensor_quantized = 0
+    self.temp1 = []
+    self.temp2 = []
+    self.Wn_temp = 0
+    self.Wp_temp = 0
+    self.mu = 0
+    self.var = 0
+    self.std = 0
 
-  def _quantize(self, tensor, t, Wp, Wn, level):
+  def _quantize(self, tensor, t, Wp, Wn, level, bias):
+    self.tensor = tensor
+
     tensor_min = tf.reduce_min(tensor)
     tensor_max = tf.reduce_max(tensor)
    
-    # temporary 
-    Wn[level] = np.abs(tensor_min)
-    Wp[level] = np.abs(tensor_max)
+    self.tensor_min.append(tensor_min)
+    self.tensor_max.append(tensor_max)
+    
+    if bias:
+        self.mu, self.var = tf.nn.moments(tensor, [0])
+    else:
+        self.mu, self.var = tf.nn.moments(tensor, [0,1,2,3])
+    self.std = tf.sqrt(self.var)
 
-    tensor_normalized = -1 + ((tensor - tensor_min)*(-1 - (-1))) / (tensor_max - tensor_min)
-    mask_tozero = tf.logical_and(tf.greater_equal(tensor_normalized, -t), tf.less_equal(tensor_normalized, t))
+    # temporary
+    #self.Wn_temp = tensor_min
+    #self.Wp_temp = tensor_max
+    self.Wn_temp = self.mu - self.std
+    self.Wp_temp = self.mu + self.std
+
+    tensor_normalized = -1.0 + ((tensor - tensor_min)*(1.0 - (-1.0))) / (tensor_max - tensor_min)
+
+    self.tensor_normalized = tensor_normalized
+
+    mask_zero = tf.logical_or(tf.less(tensor_normalized, -t), tf.greater(tensor_normalized, t))
     zeros = tf.zeros_like(tensor_normalized)
-    temp1 = tf.where(mask_tozero, tensor_normalized, zeros)
+    temp1 = tf.where(mask_zero, tensor_normalized, zeros)
+    
+    self.temp1 = temp1
+
     ones = zeros + 1
-    temp2 = tf.where(tf.greater(temp1, 0), temp1, ones*Wp[level])
-    neg_ones = -ones
-    tensor_quantized = tf.where(tf.less(temp2, 0), temp2, neg_ones*Wn[level])
-    return tensor_quantized
+    temp2 = tf.where(tf.less_equal(temp1, 0), temp1, ones*self.Wp_temp)
+    
+    self.temp2 = temp2
+
+    self.tensor_quantized = tf.where(tf.greater_equal(temp2, 0), temp2, ones*self.Wn_temp)
+    return self.tensor_quantized
 
 
   def _add_forward_graph(self):
@@ -571,17 +606,18 @@ class ModelSkeleton:
                                 trainable=(not freeze))
       self.model_params += [kernel, biases]
 
-      kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level)
-      biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level)
+      biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level, True)
+      kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level, False)
       self.model_params_quantized += [kernel_quantized, biases_quantized]
       conv = tf.nn.conv2d(
           inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
           name='convolution')
-      conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
-
+    
       #conv = tf.nn.conv2d(
       #    inputs, kernel, [1, stride, stride, 1], padding=padding,
       #    name='convolution')
+      
+      conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
       #conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
   
       if relu:

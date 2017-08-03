@@ -52,7 +52,6 @@ def eval_once(
 
     # Restores from checkpoint
     saver.restore(sess, ckpt_path)
-    # TODO(ruta): do the printing here
     # Assuming model_checkpoint_path looks something like:
     #   /ckpt_dir/model.ckpt-0,
     # extract global_step from it.
@@ -166,8 +165,22 @@ def evaluate():
       mc.LOAD_PRETRAINED_MODEL = False
       model = SqueezeDetPlus(mc)
 
-    #DOTO(ruta): fix thjis
-    # mqp in model.model_quantized_params:
+    # TODO(ruta): fix this
+    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)) as sess:
+      init = tf.global_variables_initializer()
+      sess.run(init)
+      #print(sess.run(model.tensor_min))
+      #print(sess.run(model.tensor_max))
+      #print(sess.run(model.tensor))
+      #for tn in sess.run(model.tensor_normalized):
+        #print(tn)      
+      #print(sess.run(model.tensor_normalized))
+      #print(sess.run(model.temp1))
+      #print(sess.run(model.temp2))
+      #for mpq in sess.run(model.model_params_quantized):
+        #print(mpq)
+      #print(sess.run(model.Wn_temp))
+      #print(sess.run(model.Wp_temp))
 
     imdb = kitti(FLAGS.image_set, FLAGS.data_path, mc)
 

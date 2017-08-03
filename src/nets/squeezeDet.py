@@ -19,9 +19,9 @@ from nn_skeleton import ModelSkeleton
 class SqueezeDet(ModelSkeleton):
   def __init__(self, mc, gpu_id=0):
     with tf.device('/gpu:{}'.format(gpu_id)):
-      self.kernel_Wn = np.ones(12)
+      self.kernel_Wn = -np.ones(12)
       self.kernel_Wp = np.ones(12)
-      self.bias_Wn = np.ones(12)
+      self.bias_Wn = -np.ones(12)
       self.bias_Wp = np.ones(12)
 
       ModelSkeleton.__init__(self, mc)
