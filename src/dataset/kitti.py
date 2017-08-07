@@ -33,6 +33,10 @@ class kitti(imdb):
     self._shuffle_image_idx()
 
     self._eval_tool = './src/dataset/kitti-eval/cpp/evaluate_object'
+    
+    
+    self.num_correct = 0
+    
 
   def _load_image_set_idx(self):
     image_set_file = os.path.join(
@@ -292,5 +296,7 @@ class kitti(imdb):
     out['% background error'] = num_bg_error/num_dets
     out['% repeated error'] = num_repeated_error/num_dets
     out['% recall'] = num_detected_obj/num_objs
+    
+    self.correct_percent = num_correct / num_dets
 
     return out

@@ -71,8 +71,9 @@ def _variable_with_weight_decay(name, shape, wd, initializer, trainable=True):
 
 class ModelSkeleton:
   """Base class of NN detection models."""
-  def __init__(self, mc):
-    self.kernel_t = 0.1
+  def __init__(self, mc, t, quantize_func):
+    self.quantize_func = quantize_func
+    self.kernel_t = t
     self.bias_t = 0.05
 
     self.mc = mc
@@ -140,8 +141,8 @@ class ModelSkeleton:
     
     # temporary for printing
     self.tensor = 0
-    self.tensor_min = []
-    self.tensor_max = []
+    self.tensor_min = 0
+    self.tensor_max = 0
     self.tensor_normalized = []
     self.tensor_quantized = 0
     self.temp1 = []
@@ -155,25 +156,27 @@ class ModelSkeleton:
   def _quantize(self, tensor, t, Wp, Wn, level, bias):
     self.tensor = tensor
 
-    tensor_min = tf.reduce_min(tensor)
-    tensor_max = tf.reduce_max(tensor)
+    self.tensor_min = tf.reduce_min(tensor)
+    self.tensor_max = tf.reduce_max(tensor)
    
-    self.tensor_min.append(tensor_min)
-    self.tensor_max.append(tensor_max)
+    #self.tensor_min.append(tensor_min)
+    #self.tensor_max.append(tensor_max)
     
-    if bias:
-        self.mu, self.var = tf.nn.moments(tensor, [0])
-    else:
-        self.mu, self.var = tf.nn.moments(tensor, [0,1,2,3])
-    self.std = tf.sqrt(self.var)
+    #if bias:
+    #    self.mu, self.var = tf.nn.moments(tensor, [0])
+    #else:
+    #    self.mu, self.var = tf.nn.moments(tensor, [0,1,2,3])
+    #self.std = tf.sqrt(self.var)
 
     # temporary
     #self.Wn_temp = tensor_min
     #self.Wp_temp = tensor_max
-    self.Wn_temp = self.mu - self.std
-    self.Wp_temp = self.mu + self.std
+    #self.Wn_temp = self.mu - self.std
+    #self.Wp_temp = self.mu + self.std
+    
+    self.Wn_temp, self.Wp_temp = self.quantize_func(tensor, bias)
 
-    tensor_normalized = -1.0 + ((tensor - tensor_min)*(1.0 - (-1.0))) / (tensor_max - tensor_min)
+    tensor_normalized = -1.0 + ((tensor - self.tensor_min)*(1.0 - (-1.0))) / (self.tensor_max - self.tensor_min)
 
     self.tensor_normalized = tensor_normalized
 
@@ -606,9 +609,9 @@ class ModelSkeleton:
                                 trainable=(not freeze))
       self.model_params += [kernel, biases]
 
-      biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level, True)
+      #biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level, True)
       kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level, False)
-      self.model_params_quantized += [kernel_quantized, biases_quantized]
+      #self.model_params_quantized += [kernel_quantized, biases_quantized]
       conv = tf.nn.conv2d(
           inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
           name='convolution')
@@ -617,8 +620,8 @@ class ModelSkeleton:
       #    inputs, kernel, [1, stride, stride, 1], padding=padding,
       #    name='convolution')
       
-      conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
-      #conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
+      #conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
+      conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
   
       if relu:
         out = tf.nn.relu(conv_bias, 'relu')
