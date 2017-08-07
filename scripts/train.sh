@@ -1,46 +1,25 @@
 #!/bin/bash
 
-export GPUID=0
-export NET="squeezeDet"
-export TRAIN_DIR="/rscratch/ruta/logs/squeezeDet/6.22/"
+export USE_GPU=0
 
 if [ $# -eq 0 ]
 then
-  echo "Usage: ./scripts/train.sh [options]"
-  echo " "
-  echo "options:"
-  echo "-h, --help                show brief help"
-  echo "-net                      (squeezeDet|squeezeDet+|vgg16|resnet50)"
-  echo "-gpu                      gpu id"
-  echo "-train_dir                directory for training logs"
-  exit 0
+  echo "[ERROR] Missing an argument; please specify the model to use. Use -h or --help for more detailed usage instructions."
 fi
 
 while test $# -gt 0; do
   case "$1" in
     -h|--help)
-      echo "Usage: ./scripts/train.sh [options]"
+      echo "Usage: ./scripts/train.sh (squeezeDet|squeezeDet+|vgg16|resnet50) [options]"
       echo " "
       echo "options:"
       echo "-h, --help                show brief help"
-      echo "-net                      (squeezeDet|squeezeDet+|vgg16|resnet50)"
-      echo "-gpu                      gpu id"
-      echo "-train_dir                directory for training logs"
+      echo "-gpu                      run with gpu"
       exit 0
       ;;
-    -net)
-      export NET="$2"
-      shift
-      shift
-      ;;
     -gpu)
-      export GPUID="$2"
       shift
-      shift
-      ;;
-    -train_dir)
-      export TRAIN_DIR="$2"
-      shift
+      export USE_GPU=1
       shift
       ;;
     *)
@@ -49,33 +28,67 @@ while test $# -gt 0; do
   esac
 done
 
-case "$NET" in 
-  "squeezeDet")
-    export PRETRAINED_MODEL_PATH="./data/SqueezeNet/squeezenet_v1.1.pkl"
-    ;;
-  "squeezeDet+")
-    export PRETRAINED_MODEL_PATH="./data/SqueezeNet/squeezenet_v1.0_SR_0.750.pkl"
-    ;;
-  "resnet50")
-    export PRETRAINED_MODEL_PATH="./data/ResNet/ResNet-50-weights.pkl"
-    ;;
-  "vgg16")
-    export PRETRAINED_MODEL_PATH="./data/VGG16/VGG_ILSVRC_16_layers_weights.pkl"
-    ;;
-  *)
-    echo "net architecture not supported."
-    exit 0
-    ;;
-esac
-
-
-python ./src/train.py \
+# =========================================================================== #
+# command for squeezeDet:
+# =========================================================================== #
+if [[ "$1" == "squeezeDet" ]]
+then
+  python ./src/train.py \
   --dataset=KITTI \
-  --pretrained_model_path=$PRETRAINED_MODEL_PATH \
+  --pretrained_model_path=./data/SqueezeNet/squeezenet_v1.1.pkl \
   --data_path=./data/KITTI \
   --image_set=train \
-  --train_dir="$TRAIN_DIR/train" \
-  --net=$NET \
+  --train_dir=/tmp/bichen/logs/SqueezeDet/train \
+  --net=squeezeDet \
   --summary_step=100 \
   --checkpoint_step=500 \
-  --gpu=$GPUID
+  --gpu=$USE_GPU
+fi
+
+# =========================================================================== #
+# command for squeezeDet+:
+# =========================================================================== #
+if [[ "$1" == "squeezeDet+" ]]
+then
+  python ./src/train.py \
+  --dataset=KITTI \
+  --pretrained_model_path=./data/SqueezeNet/squeezenet_v1.0_SR_0.750.pkl \
+  --data_path=./data/KITTI \
+  --image_set=train \
+  --train_dir=/tmp/bichen/logs/SqueezeDetPlus/train \
+  --net=squeezeDet+ \
+  --summary_step=100 \
+  --checkpoint_step=500 \
+  --gpu=$USE_GPU
+fi
+
+if [[ "$1" == "vgg16" ]]
+then
+  python ./src/train.py \
+  --dataset=KITTI \
+  --pretrained_model_path=./data/VGG16/VGG_ILSVRC_16_layers_weights.pkl \
+  --data_path=./data/KITTI \
+  --image_set=train \
+  --train_dir=/tmp/bichen/logs/vgg16/train \
+  --net=vgg16 \
+  --summary_step=100 \
+  --checkpoint_step=500 \
+  --gpu=$USE_GPU
+fi
+
+# =========================================================================== #
+# command for resnet50:
+# =========================================================================== #
+if [[ "$1" == "resnet50" ]]
+then
+  python ./src/train.py \
+  --dataset=KITTI \
+  --pretrained_model_path=./data/ResNet/ResNet-50-weights.pkl \
+  --data_path=./data/KITTI \
+  --image_set=train \
+  --train_dir=/tmp/bichen/logs/resnet/train \
+  --net=resnet50 \
+  --summary_step=100 \
+  --checkpoint_step=500 \
+  --gpu=$USE_GPU
+fi

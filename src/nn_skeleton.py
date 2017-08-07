@@ -71,65 +71,38 @@ def _variable_with_weight_decay(name, shape, wd, initializer, trainable=True):
 
 class ModelSkeleton:
   """Base class of NN detection models."""
-  def __init__(self, mc, t, quantize_func):
-    self.quantize_func = quantize_func
-    self.kernel_t = t
-    self.bias_t = 0.05
-
+  def __init__(self, mc):
     self.mc = mc
-    # a scalar tensor in range (0, 1]. Usually set to 0.5 in training phase and
-    # 1.0 in evaluation phase
-    self.keep_prob = 0.5 if mc.IS_TRAINING else 1.0
 
     # image batch input
-    self.ph_image_input = tf.placeholder(
+    self.image_input = tf.placeholder(
         tf.float32, [mc.BATCH_SIZE, mc.IMAGE_HEIGHT, mc.IMAGE_WIDTH, 3],
         name='image_input'
     )
+    # a scalar tensor in range (0, 1]. Usually set to 0.5 in training phase and
+    # 1.0 in evaluation phase
+    self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
     # A tensor where an element is 1 if the corresponding box is "responsible"
     # for detection an object and 0 otherwise.
-    self.ph_input_mask = tf.placeholder(
+    self.input_mask = tf.placeholder(
         tf.float32, [mc.BATCH_SIZE, mc.ANCHORS, 1], name='box_mask')
     # Tensor used to represent bounding box deltas.
-    self.ph_box_delta_input = tf.placeholder(
+    self.box_delta_input = tf.placeholder(
         tf.float32, [mc.BATCH_SIZE, mc.ANCHORS, 4], name='box_delta_input')
     # Tensor used to represent bounding box coordinates.
-    self.ph_box_input = tf.placeholder(
+    self.box_input = tf.placeholder(
         tf.float32, [mc.BATCH_SIZE, mc.ANCHORS, 4], name='box_input')
     # Tensor used to represent labels
-    self.ph_labels = tf.placeholder(
+    self.labels = tf.placeholder(
         tf.float32, [mc.BATCH_SIZE, mc.ANCHORS, mc.CLASSES], name='labels')
-
-    # IOU between predicted anchors with ground-truth boxes
+    # Tensor representing the IOU between predicted bbox and gt bbox
     self.ious = tf.Variable(
-      initial_value=np.zeros((mc.BATCH_SIZE, mc.ANCHORS)), trainable=False,
-      name='iou', dtype=tf.float32
+        initial_value=np.zeros((mc.BATCH_SIZE, mc.ANCHORS)), trainable=False,
+        name='iou', dtype=tf.float32
     )
-
-    self.FIFOQueue = tf.FIFOQueue(
-        capacity=mc.QUEUE_CAPACITY,
-        dtypes=[tf.float32, tf.float32, tf.float32, 
-                tf.float32, tf.float32],
-        shapes=[[mc.IMAGE_HEIGHT, mc.IMAGE_WIDTH, 3],
-                [mc.ANCHORS, 1],
-                [mc.ANCHORS, 4],
-                [mc.ANCHORS, 4],
-                [mc.ANCHORS, mc.CLASSES]],
-    )
-
-    self.enqueue_op = self.FIFOQueue.enqueue_many(
-        [self.ph_image_input, self.ph_input_mask,
-         self.ph_box_delta_input, self.ph_box_input, self.ph_labels]
-    )
-
-    self.image_input, self.input_mask, self.box_delta_input, \
-        self.box_input, self.labels = tf.train.batch(
-            self.FIFOQueue.dequeue(), batch_size=mc.BATCH_SIZE,
-            capacity=mc.QUEUE_CAPACITY) 
 
     # model parameters
     self.model_params = []
-    self.model_params_quantized = []
 
     # model size counter
     self.model_size_counter = [] # array of tuple of layer name, parameter size
@@ -138,61 +111,6 @@ class ModelSkeleton:
     # activation counter
     self.activation_counter = [] # array of tuple of layer name, output activations
     self.activation_counter.append(('input', mc.IMAGE_WIDTH*mc.IMAGE_HEIGHT*3))
-    
-    # temporary for printing
-    self.tensor = 0
-    self.tensor_min = 0
-    self.tensor_max = 0
-    self.tensor_normalized = []
-    self.tensor_quantized = 0
-    self.temp1 = []
-    self.temp2 = []
-    self.Wn_temp = 0
-    self.Wp_temp = 0
-    self.mu = 0
-    self.var = 0
-    self.std = 0
-
-  def _quantize(self, tensor, t, Wp, Wn, level, bias):
-    self.tensor = tensor
-
-    self.tensor_min = tf.reduce_min(tensor)
-    self.tensor_max = tf.reduce_max(tensor)
-   
-    #self.tensor_min.append(tensor_min)
-    #self.tensor_max.append(tensor_max)
-    
-    #if bias:
-    #    self.mu, self.var = tf.nn.moments(tensor, [0])
-    #else:
-    #    self.mu, self.var = tf.nn.moments(tensor, [0,1,2,3])
-    #self.std = tf.sqrt(self.var)
-
-    # temporary
-    #self.Wn_temp = tensor_min
-    #self.Wp_temp = tensor_max
-    #self.Wn_temp = self.mu - self.std
-    #self.Wp_temp = self.mu + self.std
-    
-    self.Wn_temp, self.Wp_temp = self.quantize_func(tensor, bias)
-
-    tensor_normalized = -1.0 + ((tensor - self.tensor_min)*(1.0 - (-1.0))) / (self.tensor_max - self.tensor_min)
-
-    self.tensor_normalized = tensor_normalized
-
-    mask_zero = tf.logical_or(tf.less(tensor_normalized, -t), tf.greater(tensor_normalized, t))
-    zeros = tf.zeros_like(tensor_normalized)
-    temp1 = tf.where(mask_zero, tensor_normalized, zeros)
-    
-    self.temp1 = temp1
-
-    ones = zeros + 1
-    temp2 = tf.where(tf.less_equal(temp1, 0), temp1, ones*self.Wp_temp)
-    
-    self.temp2 = temp2
-
-    self.tensor_quantized = tf.where(tf.greater_equal(temp2, 0), temp2, ones*self.Wn_temp)
-    return self.tensor_quantized
 
 
   def _add_forward_graph(self):
@@ -250,14 +168,6 @@ class ModelSkeleton:
         anchor_h = mc.ANCHOR_BOX[:, 3]
 
         box_center_x = tf.identity(
-            anchor_x + delta_x * anchor_w, name='bbox_cx')
-        box_center_y = tf.identity(
-            anchor_y + delta_y * anchor_h, name='bbox_cy')
-        box_width = tf.identity(
-            anchor_x + delta_x * anchor_w, name='bbox_cx')
-        box_center_y = tf.identity(
-            anchor_y + delta_y * anchor_h, name='bbox_cy')
-        box_width = tf.identity(
             anchor_x + delta_x * anchor_w, name='bbox_cx')
         box_center_y = tf.identity(
             anchor_y + delta_y * anchor_h, name='bbox_cy')
@@ -411,7 +321,7 @@ class ModelSkeleton:
 
     opt = tf.train.MomentumOptimizer(learning_rate=lr, momentum=mc.MOMENTUM)
     grads_vars = opt.compute_gradients(self.loss, tf.trainable_variables())
- 
+
     with tf.variable_scope('clip_gradient') as scope:
       for i, (grad, var) in enumerate(grads_vars):
         grads_vars[i] = (tf.clip_by_norm(grad, mc.MAX_GRAD_NORM), var)
@@ -444,11 +354,6 @@ class ModelSkeleton:
       size, stride, padding='SAME', freeze=False, relu=True,
       conv_with_bias=False, stddev=0.001):
     """ Convolution + BatchNorm + [relu] layer. Batch mean and var are treated
-    as constant. Weights have to be initialized from a pre-trained model or
-    restored from a checkpoint.
-
-    Args:
-     Convolution + BatchNorm + [relu] layer. Batch mean and var are treated
     as constant. Weights have to be initialized from a pre-trained model or
     restored from a checkpoint.
 
@@ -543,7 +448,7 @@ class ModelSkeleton:
 
   def _conv_layer(
       self, layer_name, inputs, filters, size, stride, padding='SAME',
-      freeze=False, xavier=False, relu=True, stddev=0.001, level=0):
+      freeze=False, xavier=False, relu=True, stddev=0.001):
     """Convolutional layer operation constructor.
 
     Args:
@@ -609,18 +514,9 @@ class ModelSkeleton:
                                 trainable=(not freeze))
       self.model_params += [kernel, biases]
 
-      #biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_Wn, level, True)
-      kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level, False)
-      #self.model_params_quantized += [kernel_quantized, biases_quantized]
       conv = tf.nn.conv2d(
-          inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
+          inputs, kernel, [1, stride, stride, 1], padding=padding,
           name='convolution')
-    
-      #conv = tf.nn.conv2d(
-      #    inputs, kernel, [1, stride, stride, 1], padding=padding,
-      #    name='convolution')
-      
-      #conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
       conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
   
       if relu:
@@ -766,7 +662,7 @@ class ModelSkeleton:
       # count layer stats
       self.model_size_counter.append((layer_name, (dim+1)*hiddens))
 
-      num_flops = 2 * dim * hiddens + hiddens
+      num_flops = 2 * dim * hidden + hidden
       if relu:
         num_flops += 2*hiddens
       self.flop_counter.append((layer_name, num_flops))
@@ -827,3 +723,11 @@ class ModelSkeleton:
     with tf.variable_scope('activation_summary') as scope:
       tf.summary.histogram(
           'activation_summary/'+layer_name, x)
+      tf.summary.scalar(
+          'activation_summary/'+layer_name+'/sparsity', tf.nn.zero_fraction(x))
+      tf.summary.scalar(
+          'activation_summary/'+layer_name+'/average', tf.reduce_mean(x))
+      tf.summary.scalar(
+          'activation_summary/'+layer_name+'/max', tf.reduce_max(x))
+      tf.summary.scalar(
+          'activation_summary/'+layer_name+'/min', tf.reduce_min(x))
