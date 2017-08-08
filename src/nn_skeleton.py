@@ -71,8 +71,12 @@ def _variable_with_weight_decay(name, shape, wd, initializer, trainable=True):
 
 class ModelSkeleton:
   """Base class of NN detection models."""
-  def __init__(self, mc):
+  def __init__(self, mc, t, quantize_func, quantize=True):
     self.mc = mc
+    self.kernel_t = t
+    self.bias_t = t
+    self.quantize_func = quantize_func
+    self.quantize = quantize
 
     # image batch input
     self.image_input = tf.placeholder(
@@ -112,6 +116,35 @@ class ModelSkeleton:
     self.activation_counter = [] # array of tuple of layer name, output activations
     self.activation_counter.append(('input', mc.IMAGE_WIDTH*mc.IMAGE_HEIGHT*3))
 
+    # temporary for printing
+    self.tensor = 0
+    self.tensor_min = 0
+    self.tensor_max = 0
+    self.tensor_normalized = []
+    self.tensor_quantized = 0
+    self.temp1 = []
+    self.temp2 = []
+    self.Wn_temp = 0
+    self.Wp_temp = 0
+
+  def _quantize(self, tensor, t, Wp, Wn, level, bias):
+    self.tensor = tensor
+
+    self.tensor_min = tf.reduce_min(tensor)
+    self.tensor_max = tf.reduce_max(tensor)
+
+    # temporary
+    self.Wn_temp, self.Wp_temp = self.quantize_func(tensor, bias)
+
+    tensor_normalized = -1.0 + ((tensor - self.tensor_min)*(1.0 - (-1.0))) / (self.tensor_max - self.tensor_min)
+    self.tensor_normalized = tensor_normalized
+    mask_zero = tf.logical_or(tf.less(tensor_normalized, -t), tf.greater(tensor_normalized, t))
+    zeros = tf.zeros_like(tensor_normalized)
+    self.temp1 = tf.where(mask_zero, tensor_normalized, zeros)
+    ones = zeros + 1
+    self.temp2 = tf.where(tf.less_equal(self.temp1, 0), self.temp1, ones*self.Wp_temp)
+    self.tensor_quantized = tf.where(tf.greater_equal(temp2, 0), self.temp2, ones*self.Wn_temp)
+    return self.tensor_quantized
 
   def _add_forward_graph(self):
     """NN architecture specification."""
@@ -518,6 +551,15 @@ class ModelSkeleton:
           inputs, kernel, [1, stride, stride, 1], padding=padding,
           name='convolution')
       conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
+
+      if self.quantize:
+        kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level, True)
+        #biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_W    n, level, True)
+        conv = tf.nn.conv2d(
+           inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
+           name='convolution')
+        #conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
+
   
       if relu:
         out = tf.nn.relu(conv_bias, 'relu')
