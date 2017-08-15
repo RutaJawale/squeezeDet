@@ -142,8 +142,9 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
     eval_summary_str = sess.run(eval_summary_ops)
     for sum_str in eval_summary_str:
       summary_writer.add_summary(sum_str, global_step)
+    print(np.mean(aps))
 
-def evaluate():
+def evaluate(t, quantize_func, quantize=True):   # (added) parameters
   """Evaluate."""
   assert FLAGS.dataset == 'KITTI', \
       'Currently only supports KITTI dataset'
@@ -167,7 +168,7 @@ def evaluate():
       mc = kitti_squeezeDet_config()
       mc.BATCH_SIZE = 1 # TODO(bichen): allow batch size > 1
       mc.LOAD_PRETRAINED_MODEL = False
-      model = SqueezeDet(mc, FLAGS.gpu)
+      model = SqueezeDet(mc, t, quantize_func, quantize, FLAGS.gpu)  # (added) parameters
     elif FLAGS.net == 'squeezeDet+':
       mc = kitti_squeezeDetPlus_config()
       mc.BATCH_SIZE = 1 # TODO(bichen): allow batch size > 1
@@ -209,12 +210,16 @@ def evaluate():
                       .format(FLAGS.eval_interval_secs))
             time.sleep(FLAGS.eval_interval_secs)
 
-
+# (added) minmax function
+def minmax(tensor, bias):
+    return tf.reduce_min(tensor), tf.reduce_max(tensor)
+            
+            
 def main(argv=None):  # pylint: disable=unused-argument
   if tf.gfile.Exists(FLAGS.eval_dir):
     tf.gfile.DeleteRecursively(FLAGS.eval_dir)
   tf.gfile.MakeDirs(FLAGS.eval_dir)
-  evaluate()
+  evaluate(0.95, minmax, quantize=False)                        # (added) parameters
 
 
 if __name__ == '__main__':

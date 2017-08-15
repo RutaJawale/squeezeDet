@@ -24,6 +24,8 @@ from config import *
 from train import _draw_box
 from nets import *
 
+import pprint # (added) in order to print
+
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string(
@@ -156,7 +158,7 @@ def image_demo():
     mc.BATCH_SIZE = 1
     # model parameters will be restored from checkpoint
     mc.LOAD_PRETRAINED_MODEL = False
-    model = SqueezeDet(mc, FLAGS.gpu)
+    model = SqueezeDet(mc, 0.8, lambda tensor, bias: (tf.reduce_min(tensor), tf.reduce_max(tensor)), True, FLAGS.gpu)   # (added) hard coded t and quantize_func
 
     saver = tf.train.Saver(model.model_params)
 
@@ -173,6 +175,10 @@ def image_demo():
         det_boxes, det_probs, det_class = sess.run(
             [model.det_boxes, model.det_probs, model.det_class],
             feed_dict={model.image_input:[input_image], model.keep_prob: 1.0})
+
+        pprint.pprint(det_boxes)
+        pprint.pprint(det_probs)
+        pprint.pprint(det_class)
 
         # Filter
         final_boxes, final_probs, final_class = model.filter_prediction(

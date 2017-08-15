@@ -143,7 +143,7 @@ class ModelSkeleton:
     self.temp1 = tf.where(mask_zero, tensor_normalized, zeros)
     ones = zeros + 1
     self.temp2 = tf.where(tf.less_equal(self.temp1, 0), self.temp1, ones*self.Wp_temp)
-    self.tensor_quantized = tf.where(tf.greater_equal(temp2, 0), self.temp2, ones*self.Wn_temp)
+    self.tensor_quantized = tf.where(tf.greater_equal(self.temp2, 0), self.temp2, ones*self.Wn_temp)
     return self.tensor_quantized
 
   def _add_forward_graph(self):
@@ -481,7 +481,7 @@ class ModelSkeleton:
 
   def _conv_layer(
       self, layer_name, inputs, filters, size, stride, padding='SAME',
-      freeze=False, xavier=False, relu=True, stddev=0.001):
+      freeze=False, xavier=False, relu=True, stddev=0.001, level=0):
     """Convolutional layer operation constructor.
 
     Args:
@@ -547,19 +547,19 @@ class ModelSkeleton:
                                 trainable=(not freeze))
       self.model_params += [kernel, biases]
 
-      conv = tf.nn.conv2d(
-          inputs, kernel, [1, stride, stride, 1], padding=padding,
-          name='convolution')
-      conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
-
       if self.quantize:
         kernel_quantized = self._quantize(kernel, self.kernel_t, self.kernel_Wp, self.kernel_Wn, level, True)
         #biases_quantized = self._quantize(biases, self.bias_t, self.bias_Wp, self.bias_W    n, level, True)
         conv = tf.nn.conv2d(
            inputs, kernel_quantized, [1, stride, stride, 1], padding=padding,
            name='convolution')
+        conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
         #conv_bias = tf.nn.bias_add(conv, biases_quantized, name='bias_add')
-
+      else:
+        conv = tf.nn.conv2d(
+          inputs, kernel, [1, stride, stride, 1], padding=padding,
+          name='convolution')
+        conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
   
       if relu:
         out = tf.nn.relu(conv_bias, 'relu')
